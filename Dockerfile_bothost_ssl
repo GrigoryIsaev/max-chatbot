@@ -1,0 +1,39 @@
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Устанавливаем системные CA-сертификаты и curl для получения
+# официальных сертификатов НУЦ Минцифры с Госуслуг.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Russian Trusted Root CA и выпускающий (промежуточный) сертификат.
+# Источник: официальные файлы Госуслуг gu-st.ru.
+RUN curl -fsSL https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt \
+        -o /usr/local/share/ca-certificates/russian_trusted_root_ca.crt \
+    && curl -fsSL https://gu-st.ru/content/lending/russian_trusted_sub_ca_pem.crt \
+        -o /usr/local/share/ca-certificates/russian_trusted_sub_ca.crt \
+    && update-ca-certificates
+
+# Requests использует системный CA bundle, в который добавлены сертификаты Минцифры.
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Данные должны храниться в постоянном каталоге Bothost.
+RUN mkdir -p /app/data
+
+ENV DATA_DIR=/app/data
+ENV DB_PATH=/app/data/bot.sqlite3
+ENV STUDENTS_CSV=/app/students.csv
+
+CMD ["python", "bot.py"]
